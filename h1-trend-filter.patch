@@ -1,0 +1,70 @@
+--- a/index.html
++++ b/index.html
+@@ -446,6 +446,7 @@
+     ZONE_ATR: 0.35, ZONE_VALID_BARS: 96,
+     BOS_LOOKBACK: 8, BOS_LEVEL_MIN_AGE: 8, BOS_CLOSE_POS: 0.70, CHOCH_LOOKBACK: 5,
+     H1_SLOPE_WINDOW: 20, H4_SLOPE_WINDOW: 30, VOL_PCT_WINDOW: 1000,
++    H1_TREND_FILTER: true, // التحسين 6: بوابة ترند الساعة — انحدار EMA50 على H1 يجب أن يميل مع الاتجاه (صاعد للشراء، هابط للبيع) — تُلغى بـ H1_TREND_FILTER: false
+     VOL_PCT_OK: [25, 80], VOL_PCT_EDGE: [15, 92], BB_WIDTH_PCT_CHOP: 85,
+     ADX_TREND: 22, ADX_STRONG: 25,
+     MACRO_MODE: "D1", MACRO_D1_ADX: 22,
+@@ -686,6 +687,7 @@
+         ema21: ema21[i], ema50: ema50[i], ema200: ema200[i],
+         rsi: rsiV[i], atr: atrV[i], adx: dm.adx[i], pdi: dm.pdi[i], mdi: dm.mdi[i],
+         ema200_slope: (i >= C.H1_SLOPE_WINDOW) ? ema200[i] - ema200[i - C.H1_SLOPE_WINDOW] : nan,
++        ema50_slope: (i >= C.H1_SLOPE_WINDOW) ? ema50[i] - ema50[i - C.H1_SLOPE_WINDOW] : nan, // التحسين 6: ميل EMA50 الساعي — بوابة ترند الساعة
+       };
+       return r;
+     });
+@@ -901,7 +903,7 @@
+ 
+     const h1 = buildHtf(clean, 3600000, 3600000, false);
+     const h4 = buildHtf(clean, 14400000, 14400000, true);
+-    const m1 = mapHtf(h1, clean, ["close", "ema21", "ema50", "ema200", "rsi", "adx", "pdi", "mdi", "atr", "ema200_slope"], "h1_");
++    const m1 = mapHtf(h1, clean, ["close", "ema21", "ema50", "ema200", "rsi", "adx", "pdi", "mdi", "atr", "ema200_slope", "ema50_slope"], "h1_");
+     const m4 = mapHtf(h4, clean, ["close", "ema50", "ema200", "rsi", "atr", "ph", "pl", "ema200_slope_h4", "ema200_slope_h4s", "adx"], "h4_");
+     for (let i = 0; i < n; i++) Object.assign(rows[i], m1[i], m4[i]);
+ 
+@@ -929,6 +931,16 @@
+   }
+ 
+   // ── محرك الإشارات (signals.py) ───────────────────────────────────
++  // التحسين 6 — بوابة ترند الساعة: انحدار EMA50 على H1 (آخر H1_SLOPE_WINDOW شمعة ساعة مكتملة)
++  // يجب أن يميل مع الاتجاه: صاعد للشراء، هابط للبيع. بيانات ناقصة تُفتّح (الإحماء يسدها أصلاً)،
++  // والانحدار الميت (صفر) يسد الاتجاهين — لا صفقة عكس ميل EMA50 الساعية.
++  function h1SlopeOk(long, row) {
++    if (C.H1_TREND_FILTER === false) return true;
++    const s = row ? row.h1_ema50_slope : nan;
++    if (isN(s)) return true;
++    return long ? s > 0 : s < 0;
++  }
++
+   function fH4(r, long) {
+     const c = r.h4_close, e50 = r.h4_ema50, e200 = r.h4_ema200;
+     if (isN(c) || isN(e50) || isN(e200)) return 0;
+@@ -1163,6 +1175,7 @@
+         if (long && !(row.h4_near_support && (!isN(row.sweep_sell) || row.in_demand))) continue;
+         if (!long && !(row.h4_near_resist && (!isN(row.sweep_buy) || row.in_supply))) continue;
+       }
++      if (!h1SlopeOk(long, row)) continue; // التحسين 6: ترند الساعة مع الاتجاه إجباري — قبل حساب العوامل
+ 
+       const factors = {
+         h4_trend: fH4(row, long), h1_trend: fH1(row, long, regime),
+@@ -1465,6 +1478,8 @@
+         blockers.push(`الموقع المكاني (سيولة/هيكل) — المطلوب ≥ ${C.HARD_MIN_LOCATION}`);
+       if (!long && (isN(row.h4_adx) ? 0 : row.h4_adx) < C.SHORT_H4_ADX)
+         blockers.push(`ADX H4 (${Math.round(isN(row.h4_adx) ? 0 : row.h4_adx)}) — البيع يتطلب ≥ ${C.SHORT_H4_ADX}`);
++      if (!h1SlopeOk(long, row))
++        blockers.push(`ترند الساعة: انحدار EMA50 على H1 ${row.h1_ema50_slope > 0 ? "صاعد" : "هابط"} — ${long ? "الشراء يتطلب ميل EMA50 الساعية صاعداً" : "البيع يتطلب ميل EMA50 الساعية هابطاً"}`);
+       // بوابات طبقة المراقبة — عرض تفسيري فقط (الطبقة الفعلية في evaluateWatch):
+       // الموانع أعلاه هي أول بواباتها، وما يلي يكمل السلسلة بعد اجتيازها
+       const wg = [];
+@@ -1682,7 +1697,7 @@
+     C, FACTOR_NAMES, REGIME_AR, SETUP_AR,
+     buildContext, evaluateSignal, evaluateWatch, watchLog, readiness,
+     buildTradePlan, // خطاف اختبار: خطة التداول (المسار القسري السوقي للتحسين 3)
+-    dashboard, signalsLog, shadowLog, effectiveThreshold, tp1FirstOutcome, shortBacktest,
++    dashboard, signalsLog, shadowLog, effectiveThreshold, tp1FirstOutcome, shortBacktest, h1SlopeOk,
+     sessionGateOk, signalSessionOk,
+     macroState, momentumState, liquidityState, structureState, volState,
+     // خطافات اختبار التشخيص: مقارنة المسار التزايدي للمئين مع الحسم الكامل
