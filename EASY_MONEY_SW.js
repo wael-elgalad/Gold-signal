@@ -3,7 +3,7 @@
 // التنقلات network-first: الاتصال يحدّث النسخة المحفوظة في الكاش، والانقطاع يخدم آخر نسخة سليمة
 // — فلا يمكن أبداً أن يُبنى قرار من كاش قديم، والكاش مجرد غلاف عرض يعمل بلا شبكة.
 "use strict";
-const SHELL = "emp_shell_v1";
+const SHELL = "emp_shell_v2";
 
 self.addEventListener("install", (e) => {
   e.waitUntil((async () => {
@@ -11,7 +11,7 @@ self.addEventListener("install", (e) => {
     // لقطع الشبكة المفاجئ. best-effort: أي فشل لا يمنع التفعيل، والتنقلات الفعلية تُخزن كبداية.
     try {
       const c = await caches.open(SHELL);
-      await c.add(new URL("EASY_MONEY_LIVE_5_FIXED.html", self.registration.scope).href);
+      await c.add(new URL("index.html", self.registration.scope).href);
     } catch (err) { /* لا تخزين مسبق — لا يمنع التفعيل */ }
     await self.skipWaiting();
   })());
