@@ -4,7 +4,7 @@
  "description": "لوحة قرار الذهب XAUUSDT الحية — تحليل وتدقيق ذاتي",
  "lang": "ar",
  "dir": "rtl",
- "start_url": "./EASY_MONEY_LIVE_5_FIXED.html",
+ "start_url": "./index.html",
  "scope": "./",
  "display": "standalone",
  "background_color": "#0b111e",
